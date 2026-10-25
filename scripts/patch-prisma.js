@@ -4,7 +4,16 @@ const path = require('path');
 // 1. Auto-switch Prisma schema provider based on DATABASE_URL
 const schemaPath = path.join(__dirname, '..', 'prisma', 'schema.prisma');
 if (fs.existsSync(schemaPath)) {
-  const dbUrl = (process.env.DATABASE_URL || '').trim();
+  let dbUrl = (process.env.DATABASE_URL || '').trim();
+  if (!dbUrl) {
+    const envPath = path.join(__dirname, '..', '.env');
+    if (fs.existsSync(envPath)) {
+      const envContent = fs.readFileSync(envPath, 'utf8');
+      const match = envContent.match(/^DATABASE_URL\s*=\s*["']?([^"'\r\n]+)["']?/m);
+      if (match) dbUrl = match[1].trim();
+    }
+  }
+
   let schema = fs.readFileSync(schemaPath, 'utf8');
   if (dbUrl.startsWith('postgres://') || dbUrl.startsWith('postgresql://')) {
     if (schema.includes('provider = "sqlite"')) {
