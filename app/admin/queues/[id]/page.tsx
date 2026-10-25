@@ -29,6 +29,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { ReorderModal } from "@/components/ReorderModal";
 import { useToast } from "@/components/Toast";
+import { POPULAR_PACKAGES } from "@/lib/constants";
 
 export default function QueueDetailPage() {
   const params = useParams();
@@ -470,14 +471,30 @@ export default function QueueDetailPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="sm:col-span-2">
-                <label className="block text-xs font-bold text-gray-700 mb-1">ชื่อแพ็กเกจ</label>
+                <label className="block text-xs font-bold text-gray-700 mb-1">ชื่อบริการ / แพ็กเกจ</label>
                 <input
                   type="text"
                   required
                   value={editPackageName}
                   onChange={(e) => setEditPackageName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-pastel-purple focus:outline-none"
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:ring-2 focus:ring-pastel-purple focus:outline-none mb-1.5"
                 />
+                <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto pt-0.5">
+                  {POPULAR_PACKAGES.map((pkg) => (
+                    <button
+                      key={pkg}
+                      type="button"
+                      onClick={() => setEditPackageName(pkg)}
+                      className={`text-[10px] px-2 py-0.5 rounded-md transition text-left ${
+                        editPackageName === pkg
+                          ? "bg-purple-600 text-white font-medium"
+                          : "bg-pastel-lavender/30 hover:bg-pastel-lavender/60 text-purple-900 border border-purple-200/60"
+                      }`}
+                    >
+                      ✦ {pkg}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div>

@@ -19,15 +19,7 @@ import {
 import { AdminLayout } from "@/components/AdminLayout";
 import { useToast } from "@/components/Toast";
 import { getBangkokToday } from "@/lib/date";
-
-const POPULAR_PACKAGES = [
-  "เปิดไพ่ความรัก 3 ใบ (เจาะลึกความสัมพันธ์)",
-  "เปิดไพ่การงานและการเงิน (Celtic Cross)",
-  "ถาม-ตอบ 3 คำถามเคลียร์ใจ",
-  "เปิดไพ่ดูภาพรวมชีวิต 12 เรือนชะตา (Zodiac Wheel)",
-  "เช็กดวงความรักคนโสด เจาะลึกเนื้อคู่",
-  "เช็กพลังงานรายสัปดาห์ / รายเดือน",
-];
+import { POPULAR_PACKAGES } from "@/lib/constants";
 
 export default function NewQueuePage() {
   const router = useRouter();
@@ -233,14 +225,14 @@ export default function NewQueuePage() {
           {/* Package Name */}
           <div>
             <label className="block text-xs font-bold text-pastel-deep mb-1.5">
-              ชื่อแพ็กเกจเปิดไพ่ <span className="text-rose-500">*</span>
+              ชื่อบริการ / แพ็กเกจเปิดไพ่ <span className="text-rose-500">*</span>
             </label>
             <div className="relative mb-2">
               <Package className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 required
-                placeholder="ระบุหรือเลือกแพ็กเกจด้านล่าง..."
+                placeholder="ระบุหรือเลือกบริการด้านล่าง..."
                 value={packageName}
                 onChange={(e) => setPackageName(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-pastel-purple text-sm text-pastel-deep"
@@ -254,7 +246,11 @@ export default function NewQueuePage() {
                   key={pkg}
                   type="button"
                   onClick={() => setPackageName(pkg)}
-                  className="text-[11px] px-2.5 py-1 rounded-lg bg-pastel-lavender/30 hover:bg-pastel-lavender/60 text-purple-900 border border-purple-200/60 transition text-left"
+                  className={`text-[11px] px-2.5 py-1 rounded-lg transition text-left ${
+                    packageName === pkg
+                      ? "bg-purple-600 text-white font-medium shadow-xs"
+                      : "bg-pastel-lavender/30 hover:bg-pastel-lavender/60 text-purple-900 border border-purple-200/60"
+                  }`}
                 >
                   ✦ {pkg}
                 </button>
