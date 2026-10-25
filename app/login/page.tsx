@@ -8,6 +8,7 @@ import { useToast } from "@/components/Toast";
 export default function LoginPage() {
   const router = useRouter();
   const { showToast } = useToast();
+  const isDev = process.env.NODE_ENV !== "production";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -49,6 +50,7 @@ export default function LoginPage() {
   };
 
   const fillQuickDemo = (role: "owner" | "admin") => {
+    if (!isDev) return;
     if (role === "owner") {
       setEmail("owner@magicaltarot.com");
       setPassword("Password123!");
@@ -90,29 +92,31 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* Quick Demo Login Helpers */}
-          <div className="mb-6 p-3 rounded-2xl bg-pastel-babypink/70 border border-pastel-pink/50">
-            <p className="text-[11px] font-semibold text-pastel-deep mb-2 flex items-center gap-1">
-              <Wand2 className="w-3.5 h-3.5 text-purple-600" />
-              <span>ทดลองเข้าสู่ระบบด่วน (Quick Demo)</span>
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => fillQuickDemo("owner")}
-                className="py-1.5 px-2 bg-white/80 hover:bg-white border border-purple-200 rounded-xl text-xs font-semibold text-purple-800 transition shadow-xs text-center"
-              >
-                👑 เจ้าของร้าน (Owner)
-              </button>
-              <button
-                type="button"
-                onClick={() => fillQuickDemo("admin")}
-                className="py-1.5 px-2 bg-white/80 hover:bg-white border border-pink-200 rounded-xl text-xs font-semibold text-pink-800 transition shadow-xs text-center"
-              >
-                🔮 แอดมิน (Admin)
-              </button>
+          {/* Quick Demo Login Helpers (Visible only in Development) */}
+          {isDev && (
+            <div className="mb-6 p-3 rounded-2xl bg-pastel-babypink/70 border border-pastel-pink/50">
+              <p className="text-[11px] font-semibold text-pastel-deep mb-2 flex items-center gap-1">
+                <Wand2 className="w-3.5 h-3.5 text-purple-600" />
+                <span>ทดลองเข้าสู่ระบบด่วน (Quick Demo)</span>
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => fillQuickDemo("owner")}
+                  className="py-1.5 px-2 bg-white/80 hover:bg-white border border-purple-200 rounded-xl text-xs font-semibold text-purple-800 transition shadow-xs text-center"
+                >
+                  👑 เจ้าของร้าน (Owner)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fillQuickDemo("admin")}
+                  className="py-1.5 px-2 bg-white/80 hover:bg-white border border-pink-200 rounded-xl text-xs font-semibold text-pink-800 transition shadow-xs text-center"
+                >
+                  🔮 แอดมิน (Admin)
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Error Alert */}
           {errorMessage && (
@@ -133,7 +137,7 @@ export default function LoginPage() {
                 <input
                   type="email"
                   required
-                  placeholder="owner@magicaltarot.com"
+                  placeholder={isDev ? "owner@magicaltarot.com" : "admin@yourshop.com"}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-pastel-purple text-sm text-pastel-deep transition"

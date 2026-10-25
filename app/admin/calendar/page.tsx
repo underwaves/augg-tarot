@@ -19,10 +19,11 @@ import { AdminLayout } from "@/components/AdminLayout";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ReorderModal } from "@/components/ReorderModal";
 import { useToast } from "@/components/Toast";
+import { getBangkokToday, addDaysToDateString } from "@/lib/date";
 
 export default function CalendarPage() {
   const { showToast } = useToast();
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = getBangkokToday();
 
   const [currentDate, setCurrentDate] = useState(todayStr);
   const [data, setData] = useState<any>(null);
@@ -52,10 +53,7 @@ export default function CalendarPage() {
   }, [currentDate, fetchDailyQueues]);
 
   const changeDateByDays = (days: number) => {
-    const d = new Date(currentDate);
-    d.setDate(d.getDate() + days);
-    const newDateStr = d.toISOString().split("T")[0];
-    setCurrentDate(newDateStr);
+    setCurrentDate((prev) => addDaysToDateString(prev, days));
   };
 
   const handleStatusChange = async (queueId: string, newStatus: string) => {

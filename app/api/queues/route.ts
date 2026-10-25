@@ -4,21 +4,52 @@ import { requireAuth } from "@/lib/auth";
 import { generateQueueNumber } from "@/lib/queue-sequence";
 import { createQueueTrackingToken } from "@/lib/tokens";
 import { logAudit } from "@/lib/audit";
+import { getBangkokToday } from "@/lib/date";
+import {
+  createQueueSchema,
+  isValidCalendarDate,
+  parsePaginationParams,
+  formatZodError,
+} from "@/lib/validation";
+
+const VALID_STATUSES = ["all", "pending", "waiting", "in_progress", "completed", "cancelled"] as const;
 
 export async function GET(req: NextRequest) {
   try {
-    const { user } = await requireAuth("view_queues");
+    const { user } = await requireAuth("view_queues", req);
     const { searchParams } = new URL(req.url);
+
+    // Validate pagination params strictly
+    const paginationResult = parsePaginationParams(searchParams, 20, 100);
+    if ("error" in paginationResult) {
+      return NextResponse.json({ error: paginationResult.error }, { status: 400 });
+    }
+    const { page, limit, skip } = paginationResult;
 
     const search = searchParams.get("search")?.trim() || "";
     const status = searchParams.get("status") || "all";
     const date = searchParams.get("date") || "all";
     const isHistory = searchParams.get("isHistory") === "true";
-    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
-    const limit = Math.max(1, Math.min(100, parseInt(searchParams.get("limit") || "20", 10)));
-    const skip = (page - 1) * limit;
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    // Validate status parameter
+    if (!VALID_STATUSES.includes(status as any)) {
+      return NextResponse.json(
+        { error: `ค่าสถานะ '${status}' ไม่ถูกต้อง สถานะที่อนุญาต: ${VALID_STATUSES.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    // Validate date parameter
+    if (date !== "all" && date !== "today") {
+      if (!isValidCalendarDate(date)) {
+        return NextResponse.json(
+          { error: "รูปแบบวันที่ไม่ถูกต้องหรือไม่ใช่วันที่มีอยู่จริงในปฏิทิน (ต้องเป็น YYYY-MM-DD)" },
+          { status: 400 }
+        );
+      }
+    }
+
+    const todayStr = getBangkokToday();
 
     // Build where filter
     const where: any = {};
@@ -50,7 +81,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Sorting
-    let orderBy: any[] = [{ queueDate: "asc" }, { queueOrder: "asc" }];
+    let orderBy: any[] = [{ queueDate: "asc" }, { queueOrder: "asc" }, { createdAt: "asc" }];
     if (isHistory) {
       orderBy = [{ updatedAt: "desc" }];
     }
@@ -96,10 +127,105 @@ export async function GET(req: NextRequest) {
   }
 }
 
+/**
+ * Creates a queue transactionally with retry logic to guarantee
+ * unique sequential queueOrder and queueNumber even under high concurrency.
+ */
+async function createQueueWithRetry(
+  data: {
+    nickname: string;
+    queueDate: string;
+    packageName: string;
+    parsedQuestions: number;
+    details: string | null;
+    internalNote: string | null;
+    status: string;
+    userId: string;
+  },
+  maxRetries = 5
+) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          // 1. Generate atomic queue number (format: TQ-YYYYMMDD-XXXX) within tx
+          const queueNumber = await generateQueueNumber(data.queueDate, tx);
+
+          // 2. Determine highest active queue order for this date within tx
+          const maxOrderRecord = await tx.queue.findFirst({
+            where: {
+              queueDate: data.queueDate,
+              status: { in: ["waiting", "in_progress"] },
+            },
+            orderBy: { queueOrder: "desc" },
+          });
+
+          const queueOrder = (maxOrderRecord?.queueOrder ?? 0) + 1;
+
+          // 3. Create Queue record within tx
+          const newQueue = await tx.queue.create({
+            data: {
+              queueNumber,
+              queueDate: data.queueDate,
+              queueOrder,
+              nickname: data.nickname,
+              packageName: data.packageName,
+              questionCount: data.parsedQuestions,
+              details: data.details,
+              internalNote: data.internalNote,
+              status: data.status,
+              createdBy: data.userId,
+            },
+          });
+
+          return newQueue;
+        },
+        {
+          maxWait: 5000,
+          timeout: 10000,
+        }
+      );
+    } catch (err: any) {
+      const isRetryable =
+        err?.code === "P2034" || // Prisma transaction conflict / deadlock
+        err?.code === "P2028" || // Transaction API error
+        err?.code === "P2002" || // Unique constraint race
+        (typeof err?.message === "string" &&
+          (err.message.includes("database is locked") ||
+            err.message.includes("busy") ||
+            err.message.includes("conflict") ||
+            err.message.includes("deadlock")));
+
+      if (isRetryable && attempt < maxRetries) {
+        // Backoff with random jitter (40ms - 150ms)
+        const delay = Math.floor(Math.random() * 40) + attempt * 40;
+        await new Promise((res) => setTimeout(res, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("Failed to create queue after maximum retry attempts");
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { user } = await requireAuth("create_queue");
-    const body = await req.json();
+    const { user } = await requireAuth("create_queue", req);
+
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "รูปแบบ JSON ไม่ถูกต้อง" }, { status: 400 });
+    }
+
+    const parseResult = createQueueSchema.safeParse(body);
+    if (!parseResult.success) {
+      return NextResponse.json(
+        { error: formatZodError(parseResult.error) },
+        { status: 400 }
+      );
+    }
 
     const {
       nickname,
@@ -109,63 +235,24 @@ export async function POST(req: NextRequest) {
       details,
       internalNote,
       initialStatus = "waiting",
-    } = body;
+    } = parseResult.data;
 
-    // Validation
-    if (!nickname || typeof nickname !== "string" || nickname.trim() === "") {
-      return NextResponse.json({ error: "กรุณากรอกชื่อเล่นลูกค้า" }, { status: 400 });
-    }
-
-    if (!queueDate || !/^\d{4}-\d{2}-\d{2}$/.test(queueDate)) {
-      return NextResponse.json({ error: "กรุณาระบุวันที่รับคิวในรูปแบบ YYYY-MM-DD" }, { status: 400 });
-    }
-
-    if (!packageName || typeof packageName !== "string" || packageName.trim() === "") {
-      return NextResponse.json({ error: "กรุณาระบุชื่อแพ็กเกจ" }, { status: 400 });
-    }
-
-    const parsedQuestions = parseInt(String(questionCount), 10);
-    if (isNaN(parsedQuestions) || parsedQuestions < 0) {
-      return NextResponse.json({ error: "จำนวนคำถามต้องเป็นตัวเลข 0 หรือมากกว่า" }, { status: 400 });
-    }
-
-    const validStatuses = ["waiting", "in_progress"];
-    const status = validStatuses.includes(initialStatus) ? initialStatus : "waiting";
-
-    // 1. Generate atomic queue number (format: TQ-YYYYMMDD-XXXX)
-    const queueNumber = await generateQueueNumber(queueDate);
-
-    // 2. Determine order index for this date
-    const maxOrderRecord = await prisma.queue.findFirst({
-      where: {
-        queueDate,
-        status: { in: ["waiting", "in_progress"] },
-      },
-      orderBy: { queueOrder: "desc" },
+    // Create queue inside atomic transaction with retry logic
+    const newQueue = await createQueueWithRetry({
+      nickname: nickname.trim(),
+      queueDate,
+      packageName: packageName.trim(),
+      parsedQuestions: questionCount,
+      details: details || null,
+      internalNote: internalNote || null,
+      status: initialStatus,
+      userId: user.id,
     });
 
-    const queueOrder = (maxOrderRecord?.queueOrder ?? 0) + 1;
-
-    // 3. Create Queue
-    const newQueue = await prisma.queue.create({
-      data: {
-        queueNumber,
-        queueDate,
-        queueOrder,
-        nickname: nickname.trim(),
-        packageName: packageName.trim(),
-        questionCount: parsedQuestions,
-        details: details?.trim() || null,
-        internalNote: internalNote?.trim() || null,
-        status,
-        createdBy: user.id,
-      },
-    });
-
-    // 4. Create initial tracking token
+    // Create initial tracking token
     const tokenInfo = await createQueueTrackingToken(newQueue.id, user.id);
 
-    // 5. Audit Log
+    // Audit Log
     await logAudit({
       actorId: user.id,
       actorName: user.displayName,
@@ -177,6 +264,7 @@ export async function POST(req: NextRequest) {
         nickname: newQueue.nickname,
         queueDate: newQueue.queueDate,
         packageName: newQueue.packageName,
+        questionCount: newQueue.questionCount,
         status: newQueue.status,
       },
       details: `เพิ่มคิวใหม่ ${newQueue.queueNumber} สำหรับ ${newQueue.nickname}`,

@@ -7,8 +7,18 @@ export async function GET(
 ) {
   try {
     const { token } = params;
-    if (!token) {
-      return NextResponse.json({ error: "ไม่พบโทเคนติดตามคิว" }, { status: 400 });
+    if (!token || typeof token !== "string" || token.trim() === "") {
+      return NextResponse.json(
+        { error: "ไม่พบโทเคนติดตามคิว" },
+        {
+          status: 400,
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        }
+      );
     }
 
     const result = await getQueueByTrackingToken(token);
@@ -16,7 +26,14 @@ export async function GET(
     if (!result) {
       return NextResponse.json(
         { error: "ไม่พบข้อมูลคิว หรือลิงก์ติดตามคิวไม่ถูกต้อง" },
-        { status: 404 }
+        {
+          status: 404,
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        }
       );
     }
 
@@ -24,28 +41,60 @@ export async function GET(
       if (result.error === "REVOKED") {
         return NextResponse.json(
           { error: "ลิงก์ติดตามคิวนี้ถูกเพิกถอนแล้ว กรุณาติดต่อทางร้านเพื่อขอรับลิงก์ใหม่" },
-          { status: 410 }
+          {
+            status: 410,
+            headers: {
+              "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+              Pragma: "no-cache",
+              Expires: "0",
+            },
+          }
         );
       }
       if (result.error === "EXPIRED") {
         return NextResponse.json(
-          { error: "ลิงก์ติดตามคิวนี้หมดอายุแล้ว" },
-          { status: 410 }
+          { error: "ลิงก์ติดตามคิวนี้หมดอายุแล้ว กรุณาติดต่อทางร้านเพื่อขอรับลิงก์ใหม่" },
+          {
+            status: 410,
+            headers: {
+              "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+              Pragma: "no-cache",
+              Expires: "0",
+            },
+          }
         );
       }
     }
 
     const shopName = process.env.NEXT_PUBLIC_SHOP_NAME || "Magical Pastel Tarot 🔮";
 
-    return NextResponse.json({
-      shopName,
-      ...result.data,
-    });
+    // Strictly send only public information. Never include internalNote or internal data.
+    return NextResponse.json(
+      {
+        shopName,
+        ...result.data,
+      },
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      }
+    );
   } catch (error) {
     console.error("Public track API error:", error);
     return NextResponse.json(
       { error: "เกิดข้อผิดพลาดในการโหลดข้อมูลคิว กรุณาลองใหม่อีกครั้ง" },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      }
     );
   }
 }

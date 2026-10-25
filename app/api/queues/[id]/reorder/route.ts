@@ -3,13 +3,21 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { moveQueueStep, jumpQueueToPosition } from "@/lib/reorder";
+import { parseStrictInteger } from "@/lib/validation";
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { user } = await requireAuth("reorder_queue");
+    const { user } = await requireAuth("reorder_queue", req);
     const { id } = params;
-    const body = await req.json();
-    const { type, direction, targetPosition } = body;
+
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "รูปแบบ JSON ไม่ถูกต้อง" }, { status: 400 });
+    }
+
+    const { type, direction, targetPosition } = body || {};
 
     const queue = await prisma.queue.findUnique({
       where: { id },
@@ -29,17 +37,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     let result: any;
     if (type === "step") {
       if (direction !== "up" && direction !== "down") {
-        return NextResponse.json({ error: "ทิศทางการเลื่อนไม่ถูกต้อง" }, { status: 400 });
+        return NextResponse.json({ error: "ทิศทางการเลื่อนไม่ถูกต้อง (ต้องเป็น up หรือ down)" }, { status: 400 });
       }
       result = await moveQueueStep(id, direction);
     } else if (type === "jump") {
-      const pos = parseInt(String(targetPosition), 10);
-      if (isNaN(pos) || pos < 1) {
-        return NextResponse.json({ error: "ลำดับเป้าหมายไม่ถูกต้อง" }, { status: 400 });
+      const parsedPos = parseStrictInteger(targetPosition);
+      if (!parsedPos.success || parsedPos.value < 1) {
+        return NextResponse.json({ error: "ลำดับเป้าหมายต้องเป็นตัวเลขจำนวนเต็มที่มากกว่าหรือเท่ากับ 1" }, { status: 400 });
       }
-      result = await jumpQueueToPosition(id, pos);
+      result = await jumpQueueToPosition(id, parsedPos.value);
     } else {
-      return NextResponse.json({ error: "รูปแบบคำสั่งจัดลำดับไม่ถูกต้อง" }, { status: 400 });
+      return NextResponse.json({ error: "รูปแบบคำสั่งจัดลำดับไม่ถูกต้อง (ต้องเป็น step หรือ jump)" }, { status: 400 });
     }
 
     // Log audit

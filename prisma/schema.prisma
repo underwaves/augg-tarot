@@ -20,8 +20,22 @@ model Profile {
   createdQueues Queue[]          @relation("QueueCreator")
   assignedQueues Queue[]         @relation("QueueAssignee")
   auditLogs    AuditLog[]
+  sessions     Session[]
 
   @@map("profiles")
+}
+
+model Session {
+  id        String    @id @default(uuid())
+  userId    String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      Profile   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
 }
 
 model AdminPermission {
@@ -72,6 +86,7 @@ model QueueTrackingToken {
   id         String    @id @default(uuid())
   queueId    String
   tokenHash  String    @unique
+  token      String?
   createdBy  String
   createdAt  DateTime  @default(now())
   expiresAt  DateTime?

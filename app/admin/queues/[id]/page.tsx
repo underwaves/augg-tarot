@@ -38,6 +38,7 @@ export default function QueueDetailPage() {
 
   const [queue, setQueue] = useState<any | null>(null);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [canViewAuditLogs, setCanViewAuditLogs] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Edit Mode state
@@ -59,6 +60,7 @@ export default function QueueDetailPage() {
   const [cancelNote, setCancelNote] = useState("");
   const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
   const [isRevokeModalOpen, setIsRevokeModalOpen] = useState(false);
+  const [isRegenerateModalOpen, setIsRegenerateModalOpen] = useState(false);
 
   const fetchQueueData = useCallback(async () => {
     try {
@@ -68,6 +70,7 @@ export default function QueueDetailPage() {
         const data = await res.json();
         setQueue(data.queue);
         setAuditLogs(data.auditLogs || []);
+        setCanViewAuditLogs(Boolean(data.canViewAuditLogs));
 
         // Fill edit fields
         setEditNickname(data.queue.nickname);
@@ -77,13 +80,18 @@ export default function QueueDetailPage() {
         setEditDetails(data.queue.details || "");
         setEditInternalNote(data.queue.internalNote || "");
 
-        // Setup active token preview if present
-        if (data.queue.tokens && data.queue.tokens.length > 0) {
+        // Setup active tracking url
+        if (data.queue.activeTrackingUrl) {
+          setCurrentTrackingUrl(data.queue.activeTrackingUrl);
+        } else if (data.queue.tokens && data.queue.tokens.length > 0) {
           const activeToken = data.queue.tokens.find((t: any) => !t.revokedAt);
           if (activeToken) {
-            // Token is hashed in DB, so we provide regenerate/active status
             setCurrentTrackingUrl("LINK_ACTIVE");
+          } else {
+            setCurrentTrackingUrl(null);
           }
+        } else {
+          setCurrentTrackingUrl(null);
         }
       } else {
         showToast("ไม่พบข้อมูลคิว", "error");
@@ -188,6 +196,7 @@ export default function QueueDetailPage() {
         setCurrentTrackingUrl(data.trackingUrl);
         navigator.clipboard.writeText(data.trackingUrl);
         showToast("สร้างและคัดลอกลิงก์ติดตามคิวใหม่สำเร็จเรียบร้อยค่ะ ✨", "success");
+        setIsRegenerateModalOpen(false);
         fetchQueueData();
       } else {
         const err = await res.json();
@@ -197,6 +206,16 @@ export default function QueueDetailPage() {
       showToast("เกิดข้อผิดพลาดในการสร้างลิงก์", "error");
     } finally {
       setGeneratingToken(false);
+    }
+  };
+
+  // Copy Existing Link without generating a new token or revoking
+  const handleCopyLink = () => {
+    if (currentTrackingUrl && currentTrackingUrl !== "LINK_ACTIVE") {
+      navigator.clipboard.writeText(currentTrackingUrl);
+      showToast("คัดลอกลิงก์ติดตามคิวเรียบร้อยแล้วค่ะ ✨", "success");
+    } else {
+      setIsRegenerateModalOpen(true);
     }
   };
 
@@ -338,23 +357,44 @@ export default function QueueDetailPage() {
                 : "ยังไม่มีการสร้างลิงก์สำหรับคิวนี้"}
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleGenerateToken}
-                disabled={generatingToken}
-                className="btn-magical px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs shrink-0"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                <span>{hasActiveToken ? "สร้างลิงก์ใหม่ / คัดลอก" : "สร้างลิงก์ติดตาม"}</span>
-              </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {hasActiveToken ? (
+                <>
+                  <button
+                    onClick={handleCopyLink}
+                    className="btn-magical px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs shrink-0"
+                    title="คัดลอกลิงก์เดิมโดยไม่ยกเลิกหรือสร้างใหม่"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>คัดลอกลิงก์</span>
+                  </button>
 
-              {hasActiveToken && (
+                  <button
+                    onClick={() => setIsRegenerateModalOpen(true)}
+                    disabled={generatingToken}
+                    className="px-3 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-semibold flex items-center gap-1 shrink-0 transition"
+                    title="ออกลิงก์ใหม่และเพิกถอนลิงก์เดิม"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>ออกลิงก์ใหม่</span>
+                  </button>
+
+                  <button
+                    onClick={() => setIsRevokeModalOpen(true)}
+                    className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold shrink-0 transition"
+                    title="เพิกถอนลิงก์ไม่ให้ลูกค้าเข้าดูได้อีก"
+                  >
+                    เพิกถอน
+                  </button>
+                </>
+              ) : (
                 <button
-                  onClick={() => setIsRevokeModalOpen(true)}
-                  className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold shrink-0 transition"
-                  title="เพิกถอนลิงก์ไม่ให้ลูกค้าเข้าดูได้อีก"
+                  onClick={handleGenerateToken}
+                  disabled={generatingToken}
+                  className="btn-magical px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs shrink-0"
                 >
-                  เพิกถอน
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>สร้างลิงก์ติดตาม</span>
                 </button>
               )}
             </div>
@@ -557,7 +597,11 @@ export default function QueueDetailPage() {
             </h3>
           </div>
 
-          {auditLogs.length === 0 ? (
+          {!canViewAuditLogs ? (
+            <p className="text-xs text-gray-400 py-3">
+              ประวัติระบบแสดงเฉพาะผู้ดูแลที่มีสิทธิ์ดูประวัติระบบ (view_audit_logs) เท่านั้น
+            </p>
+          ) : auditLogs.length === 0 ? (
             <p className="text-xs text-gray-400 py-3">ยังไม่มีประวัติการเปลี่ยนแปลงเพิ่มเติม</p>
           ) : (
             <div className="space-y-2.5">
@@ -591,6 +635,16 @@ export default function QueueDetailPage() {
         isDestructive
         onConfirm={handleConfirmCancel}
         onCancel={() => setIsCancelModalOpen(false)}
+      />
+
+      {/* Regenerate Token Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={isRegenerateModalOpen}
+        title="ยืนยันการออกลิงก์ติดตามคิวใหม่"
+        message="การออกลิงก์ใหม่จะทำให้ลิงก์ติดตามเดิมของลูกค้าใช้งานไม่ได้ทันที (ถูกเพิกถอน) คุณแน่ใจหรือไม่ที่จะออกลิงก์ใหม่?"
+        confirmLabel="ยืนยันออกลิงก์ใหม่"
+        onConfirm={handleGenerateToken}
+        onCancel={() => setIsRegenerateModalOpen(false)}
       />
 
       {/* Revoke Token Confirmation Modal */}

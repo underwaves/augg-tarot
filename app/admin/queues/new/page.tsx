@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
 import { useToast } from "@/components/Toast";
+import { getBangkokToday } from "@/lib/date";
 
 const POPULAR_PACKAGES = [
   "เปิดไพ่ความรัก 3 ใบ (เจาะลึกความสัมพันธ์)",
@@ -32,7 +33,7 @@ export default function NewQueuePage() {
   const router = useRouter();
   const { showToast } = useToast();
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = getBangkokToday();
 
   const [nickname, setNickname] = useState("");
   const [queueDate, setQueueDate] = useState(todayStr);

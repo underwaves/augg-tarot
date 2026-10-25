@@ -4,20 +4,35 @@ import { requireAuth } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { normalizeQueueOrdersForDate } from "@/lib/reorder";
 
+const VALID_STATUSES = ["waiting", "in_progress", "completed", "cancelled"] as const;
+
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { id } = params;
-    const body = await req.json();
-    const { status, note } = body;
 
-    const validStatuses = ["waiting", "in_progress", "completed", "cancelled"];
-    if (!validStatuses.includes(status)) {
-      return NextResponse.json({ error: "สถานะไม่ถูกต้อง" }, { status: 400 });
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "รูปแบบ JSON ไม่ถูกต้อง" }, { status: 400 });
+    }
+
+    const { status, note } = body || {};
+
+    if (!status || !VALID_STATUSES.includes(status)) {
+      return NextResponse.json(
+        { error: `สถานะ '${status}' ไม่ถูกต้อง สถานะที่อนุญาต: ${VALID_STATUSES.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    if (note !== undefined && note !== null && typeof note !== "string") {
+      return NextResponse.json({ error: "หมายเหตุต้องเป็นข้อความสตริง" }, { status: 400 });
     }
 
     // Check permission: if status is cancelled, requires cancel_queue; otherwise change_status
     const requiredPerm = status === "cancelled" ? "cancel_queue" : "change_status";
-    const { user } = await requireAuth(requiredPerm);
+    const { user } = await requireAuth(requiredPerm, req);
 
     const existing = await prisma.queue.findUnique({
       where: { id },
@@ -59,10 +74,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       }
     }
 
-    if (note) {
+    if (note && typeof note === "string" && note.trim() !== "") {
+      const cleanNote = note.trim();
       dataToUpdate.internalNote = existing.internalNote
-        ? `${existing.internalNote}\n[${new Date().toLocaleTimeString("th-TH")}] ${note}`
-        : note;
+        ? `${existing.internalNote}\n[${new Date().toLocaleTimeString("th-TH")}] ${cleanNote}`
+        : cleanNote;
     }
 
     const updated = await prisma.queue.update({

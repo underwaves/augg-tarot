@@ -1,12 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { getBangkokToday } from "@/lib/date";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const { user } = await requireAuth("view_queues");
+    const { user } = await requireAuth("view_queues", req);
+    const canViewAuditLogs = user.role === "owner" || user.permissions.includes("view_audit_logs");
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = getBangkokToday();
 
     const [
       totalCount,
@@ -54,11 +56,13 @@ export async function GET() {
           },
         },
       }),
-      // Recent audit logs
-      prisma.auditLog.findMany({
-        orderBy: { createdAt: "desc" },
-        take: 6,
-      }),
+      // Recent audit logs (Only query if user has view_audit_logs permission)
+      canViewAuditLogs
+        ? prisma.auditLog.findMany({
+            orderBy: { createdAt: "desc" },
+            take: 6,
+          })
+        : Promise.resolve([]),
     ]);
 
     return NextResponse.json({
@@ -72,7 +76,8 @@ export async function GET() {
         pendingOverdue: pendingOverdueCount,
       },
       upcomingQueues,
-      recentLogs,
+      recentLogs: canViewAuditLogs ? recentLogs : [],
+      canViewAuditLogs,
       lastUpdated: new Date().toISOString(),
     });
   } catch (error: any) {

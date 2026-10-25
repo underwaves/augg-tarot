@@ -1,13 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { getBangkokToday, addDaysToDateString } from "@/lib/date";
+import { isValidCalendarDate } from "@/lib/validation";
 
 export async function GET(req: NextRequest) {
   try {
-    const { user } = await requireAuth("view_queues");
+    const { user } = await requireAuth("view_queues", req);
     const { searchParams } = new URL(req.url);
 
-    const date = searchParams.get("date") || new Date().toISOString().split("T")[0];
+    const dateParam = searchParams.get("date");
+    if (dateParam !== null && dateParam !== "") {
+      if (!isValidCalendarDate(dateParam)) {
+        return NextResponse.json(
+          { error: "รูปแบบวันที่ไม่ถูกต้องหรือไม่ใช่วันที่มีอยู่จริงในปฏิทิน (ต้องเป็น YYYY-MM-DD)" },
+          { status: 400 }
+        );
+      }
+    }
+
+    const date = dateParam || getBangkokToday();
 
     // Fetch all queues for this specific date
     const queuesForDate = await prisma.queue.findMany({
@@ -31,14 +43,9 @@ export async function GET(req: NextRequest) {
     const cancelled = queuesForDate.filter((q) => q.status === "cancelled").length;
 
     // Get counts for surrounding 14 days (7 days before, 7 days after) for the mini date picker ribbon
-    const curr = new Date(date);
-    const startDate = new Date(curr);
-    startDate.setDate(curr.getDate() - 7);
-    const endDate = new Date(curr);
-    endDate.setDate(curr.getDate() + 7);
-
-    const startStr = startDate.toISOString().split("T")[0];
-    const endStr = endDate.toISOString().split("T")[0];
+    // Using Bangkok civil calendar arithmetic to prevent timezone or DST drift
+    const startStr = addDaysToDateString(date, -7);
+    const endStr = addDaysToDateString(date, 7);
 
     const surroundingQueues = await prisma.queue.findMany({
       where: {
@@ -53,20 +60,25 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    // Group counts by date
-    const dailyCounts: Record<string, { total: number; pending: number }> = {};
-    for (const q of surroundingQueues) {
-      if (!dailyCounts[q.queueDate]) {
-        dailyCounts[q.queueDate] = { total: 0, pending: 0 };
-      }
-      dailyCounts[q.queueDate].total += 1;
-      if (["waiting", "in_progress"].includes(q.status)) {
-        dailyCounts[q.queueDate].pending += 1;
+    // Aggregate daily counts for ribbon
+    const dailyCounts: Record<string, { total: number; waiting: number; inProgress: number; completed: number; cancelled: number }> = {};
+    for (let i = -7; i <= 7; i++) {
+      const d = addDaysToDateString(date, i);
+      dailyCounts[d] = { total: 0, waiting: 0, inProgress: 0, completed: 0, cancelled: 0 };
+    }
+
+    for (const sq of surroundingQueues) {
+      if (dailyCounts[sq.queueDate]) {
+        dailyCounts[sq.queueDate].total += 1;
+        if (sq.status === "waiting") dailyCounts[sq.queueDate].waiting += 1;
+        if (sq.status === "in_progress") dailyCounts[sq.queueDate].inProgress += 1;
+        if (sq.status === "completed") dailyCounts[sq.queueDate].completed += 1;
+        if (sq.status === "cancelled") dailyCounts[sq.queueDate].cancelled += 1;
       }
     }
 
     return NextResponse.json({
-      selectedDate: date,
+      date,
       summary: {
         total,
         waiting,
@@ -75,16 +87,16 @@ export async function GET(req: NextRequest) {
         cancelled,
       },
       queues: queuesForDate,
-      dailyCounts,
+      surroundingCounts: dailyCounts,
     });
   } catch (error: any) {
     if (error.message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "กรุณาเข้าสู่ระบบก่อนทำรายการ" }, { status: 401 });
     }
     if (error.message === "FORBIDDEN") {
-      return NextResponse.json({ error: "คุณไม่มีสิทธิ์ในการเข้าถึงปฏิทินคิว" }, { status: 403 });
+      return NextResponse.json({ error: "คุณไม่มีสิทธิ์ในการดูข้อมูลปฏิทินคิว" }, { status: 403 });
     }
-    console.error("Calendar error:", error);
+    console.error("Calendar API error:", error);
     return NextResponse.json({ error: "เกิดข้อผิดพลาดในการโหลดข้อมูลปฏิทิน" }, { status: 500 });
   }
 }

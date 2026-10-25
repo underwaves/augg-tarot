@@ -374,16 +374,22 @@ export default function DashboardPage() {
                   บันทึกกิจกรรมล่าสุด
                 </h2>
               </div>
-              <Link
-                href="/admin/logs"
-                className="text-xs font-semibold text-purple-700 hover:text-purple-900"
-              >
-                ดูทั้งหมด
-              </Link>
+              {data?.canViewAuditLogs !== false && (
+                <Link
+                  href="/admin/logs"
+                  className="text-xs font-semibold text-purple-700 hover:text-purple-900"
+                >
+                  ดูทั้งหมด
+                </Link>
+              )}
             </div>
 
             {loading ? (
               <div className="py-8 text-center text-xs text-gray-400">กำลังโหลด...</div>
+            ) : data?.canViewAuditLogs === false ? (
+              <div className="py-8 text-center text-xs text-gray-400">
+                ไม่มีสิทธิ์ดูบันทึกกิจกรรมของระบบ
+              </div>
             ) : !data?.recentLogs || data.recentLogs.length === 0 ? (
               <div className="py-8 text-center text-xs text-gray-400">
                 ยังไม่มีบันทึกกิจกรรม

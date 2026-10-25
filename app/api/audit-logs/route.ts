@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
+import { parsePaginationParams } from "@/lib/validation";
 
 export async function GET(req: NextRequest) {
   try {
-    const { user } = await requireAuth("view_audit_logs");
+    const { user } = await requireAuth("view_audit_logs", req);
     const { searchParams } = new URL(req.url);
 
+    const paginationResult = parsePaginationParams(searchParams, 30, 100);
+    if ("error" in paginationResult) {
+      return NextResponse.json({ error: paginationResult.error }, { status: 400 });
+    }
+    const { page, limit, skip } = paginationResult;
+
     const action = searchParams.get("action");
-    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
-    const limit = Math.max(1, Math.min(100, parseInt(searchParams.get("limit") || "30", 10)));
-    const skip = (page - 1) * limit;
 
     const where: any = {};
     if (action && action !== "all") {

@@ -1,20 +1,19 @@
 import { prisma } from "./prisma";
+import { getBangkokToday } from "./date";
 
 /**
  * Generate atomic unique queue number in format TQ-YYYYMMDD-XXXX
  * Uses queue_sequences table within a transaction to guarantee zero collisions
+ * Supports executing inside an existing Prisma transaction client (tx)
  */
-export async function generateQueueNumber(dateStr?: string): Promise<string> {
-  // Use today's date in YYYYMMDD format (e.g. 20261025)
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, "0");
-  const day = String(today.getDate()).padStart(2, "0");
-  const sequenceDate = dateStr ? dateStr.replace(/-/g, "") : `${year}${month}${day}`;
+export async function generateQueueNumber(
+  dateStr?: string,
+  externalTx?: Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
+): Promise<string> {
+  const cleanDateStr = dateStr || getBangkokToday();
+  const sequenceDate = cleanDateStr.replace(/-/g, "");
 
-  // Execute in an atomic transaction
-  return await prisma.$transaction(async (tx) => {
-    // Upsert or increment
+  const execute = async (tx: any) => {
     const existing = await tx.queueSequence.findUnique({
       where: { sequenceDate },
     });
@@ -36,8 +35,14 @@ export async function generateQueueNumber(dateStr?: string): Promise<string> {
     }
 
     const paddedNumber = String(nextNumber).padStart(4, "0");
-    const queueNumber = `TQ-${sequenceDate}-${paddedNumber}`;
+    return `TQ-${sequenceDate}-${paddedNumber}`;
+  };
 
-    return queueNumber;
+  if (externalTx) {
+    return await execute(externalTx);
+  }
+
+  return await prisma.$transaction(async (tx) => {
+    return await execute(tx);
   });
 }

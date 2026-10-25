@@ -37,3 +37,11 @@ next-env.d.ts
 # SQLite database
 prisma/*.db
 prisma/*.db-journal
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# binaries
+*.exe
+cloudflared.exe

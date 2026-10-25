@@ -70,14 +70,16 @@ export default function AuditLogsPage() {
         </div>
 
         {/* Filter Bar */}
-        <div className="pastel-card p-4 border-pastel-lavender/50 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-gray-500" />
-            <span className="text-xs font-bold text-gray-700">กรองตามประเภท:</span>
+        <div className="pastel-card p-4 border-pastel-lavender/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0 w-full sm:w-auto">
+            <div className="flex items-center gap-1.5 shrink-0 text-gray-700 text-xs font-bold">
+              <Filter className="w-4 h-4 text-gray-500" />
+              <span>กรองตามประเภท:</span>
+            </div>
             <select
               value={actionFilter}
               onChange={(e) => setActionFilter(e.target.value)}
-              className="px-3 py-1.5 rounded-xl border border-gray-200 bg-white text-xs font-medium text-pastel-deep focus:outline-none focus:ring-2 focus:ring-pastel-purple"
+              className="w-full sm:w-auto max-w-full px-3 py-1.5 rounded-xl border border-gray-200 bg-white text-xs font-medium text-pastel-deep focus:outline-none focus:ring-2 focus:ring-pastel-purple"
             >
               <option value="all">ทุกกิจกรรม</option>
               <option value="CREATE_QUEUE">เพิ่มคิว (CREATE_QUEUE)</option>
@@ -92,13 +94,15 @@ export default function AuditLogsPage() {
             </select>
           </div>
 
-          <button
-            onClick={() => fetchLogs(pagination.page)}
-            className="p-2 rounded-xl bg-white hover:bg-pastel-babypink border border-gray-200 text-gray-600 transition"
-            title="รีเฟรชบันทึก"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-purple-600" : ""}`} />
-          </button>
+          <div className="flex justify-end">
+            <button
+              onClick={() => fetchLogs(pagination.page)}
+              className="p-2 rounded-xl bg-white hover:bg-pastel-babypink border border-gray-200 text-gray-600 transition"
+              title="รีเฟรชบันทึก"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-purple-600" : ""}`} />
+            </button>
+          </div>
         </div>
 
         {/* Logs Table */}
@@ -111,9 +115,9 @@ export default function AuditLogsPage() {
             <h3 className="text-base font-bold text-pastel-deep">ไม่มีบันทึกกิจกรรมตามเงื่อนไข</h3>
           </div>
         ) : (
-          <div className="pastel-card overflow-hidden border-pastel-lavender/60">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+          <div className="pastel-card overflow-hidden border-pastel-lavender/60 max-w-full">
+            <div className="overflow-x-auto max-w-full">
+              <table className="w-full text-left text-xs min-w-[500px]">
                 <thead className="bg-pastel-babypink/70 border-b border-pastel-pink/50 text-pastel-deep font-bold">
                   <tr>
                     <th className="py-3 px-4">วันและเวลา</th>
@@ -147,7 +151,7 @@ export default function AuditLogsPage() {
 
             {/* Pagination */}
             {pagination.totalPages > 1 && (
-              <div className="p-4 border-t border-pastel-lavender/40 flex items-center justify-between text-xs text-gray-600">
+              <div className="p-4 border-t border-pastel-lavender/40 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-600">
                 <span>
                   หน้า {pagination.page} / {pagination.totalPages} (ทั้งหมด {pagination.total} รายการ)
                 </span>

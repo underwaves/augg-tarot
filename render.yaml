@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: augg-tarot
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm install && npm run build
+    startCommand: npx prisma db push --skip-generate && node prisma/seed.js && npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: NEXT_PUBLIC_SHOP_NAME
+        value: "Magical Pastel Tarot 🔮"
+      - key: DATABASE_URL
+        value: "file:./prisma/production.db"
+      - key: TRACKING_TOKEN_TTL_DAYS
+        value: "30"
+      - key: INITIAL_OWNER_EMAIL
+        value: "owner@magicaltarot.com"
+      - key: INITIAL_OWNER_PASSWORD
+        value: "Password123!"
+      - key: INITIAL_OWNER_NAME
+        value: "แม่หมออันดา (Shop Owner)"

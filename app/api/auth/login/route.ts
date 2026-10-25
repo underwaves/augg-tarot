@@ -5,16 +5,23 @@ import { logAudit } from "@/lib/audit";
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, password } = await req.json();
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "รูปแบบ JSON ไม่ถูกต้อง" }, { status: 400 });
+    }
 
-    if (!email || !password) {
+    const { email, password } = body || {};
+
+    if (!email || !password || typeof email !== "string" || typeof password !== "string") {
       return NextResponse.json(
         { error: "กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน" },
         { status: 400 }
       );
     }
 
-    const normalizedEmail = String(email).trim().toLowerCase();
+    const normalizedEmail = email.trim().toLowerCase();
 
     const user = await prisma.profile.findUnique({
       where: { email: normalizedEmail },
@@ -42,8 +49,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Set HTTP-only session cookie
-    await setSessionCookie(user.id);
+    // Set HTTP-only session cookie and retrieve session token
+    const token = await setSessionCookie(user.id);
 
     // Audit log
     await logAudit({
@@ -57,6 +64,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      token,
       user: {
         id: user.id,
         email: user.email,
@@ -64,7 +72,14 @@ export async function POST(req: NextRequest) {
         role: user.role,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
+    if (error instanceof Error && error.message.includes("Configuration error")) {
+      console.error("Login configuration error:", error.message);
+      return NextResponse.json(
+        { error: "ระบบยังไม่ได้รับการตั้งค่าความปลอดภัยที่ถูกต้อง กรุณาติดต่อผู้ดูแลระบบ" },
+        { status: 500 }
+      );
+    }
     console.error("Login error:", error);
     return NextResponse.json(
       { error: "เกิดข้อผิดพลาดในการเข้าสู่ระบบ กรุณาลองใหม่อีกครั้ง" },

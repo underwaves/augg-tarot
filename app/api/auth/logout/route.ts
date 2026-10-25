@@ -1,10 +1,14 @@
-import { NextResponse } from "next/server";
-import { getCurrentUser, clearSessionCookie } from "@/lib/auth";
+import { NextRequest, NextResponse } from "next/server";
+import { getCurrentUser, clearSessionCookie, COOKIE_NAME } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
-    const user = await getCurrentUser();
+    const headerToken = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+    const cookieToken = req.cookies.get(COOKIE_NAME)?.value;
+    const token = headerToken || cookieToken;
+
+    const user = await getCurrentUser(token);
     if (user) {
       await logAudit({
         actorId: user.id,
@@ -16,9 +20,9 @@ export async function POST() {
       });
     }
 
-    await clearSessionCookie();
+    await clearSessionCookie(token);
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, message: "ออกจากระบบสำเร็จ" });
   } catch (error) {
     console.error("Logout error:", error);
     return NextResponse.json(

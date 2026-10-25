@@ -11,16 +11,33 @@ export function generateSecureToken(): string {
 }
 
 /**
+ * Returns the configured TTL in days for tracking tokens.
+ * Defaults to null (no expiration) to preserve existing behavior and prevent
+ * unintentionally breaking active tokens. Can be configured via TRACKING_TOKEN_TTL_DAYS.
+ */
+export function getTrackingTokenTtlDays(): number | null {
+  const envVal = process.env.TRACKING_TOKEN_TTL_DAYS;
+  if (!envVal || envVal.trim() === "") return null;
+  const days = parseInt(envVal.trim(), 10);
+  if (isNaN(days) || days <= 0) return null;
+  return days;
+}
+
+/**
  * Creates a new tracking token for a queue, revoking any previously active tokens if desired.
- * Returns the plain raw token for the admin to copy/share with customer.
+ * Stores both raw token and token hash, and sets expiration if configured.
  */
 export async function createQueueTrackingToken(
   queueId: string,
   createdByUserId: string,
-  revokePrevious = true
-): Promise<{ rawToken: string; trackingUrl: string; tokenId: string }> {
+  revokePrevious = true,
+  customBaseUrl?: string
+): Promise<{ rawToken: string; trackingUrl: string; tokenId: string; expiresAt: Date | null }> {
   const rawToken = generateSecureToken();
   const tokenHash = hashTrackingToken(rawToken);
+
+  const ttlDays = getTrackingTokenTtlDays();
+  const expiresAt = ttlDays ? new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000) : null;
 
   const trackingRecord = await prisma.$transaction(async (tx) => {
     if (revokePrevious) {
@@ -39,23 +56,66 @@ export async function createQueueTrackingToken(
       data: {
         queueId,
         tokenHash,
+        token: rawToken,
         createdBy: createdByUserId,
+        expiresAt,
       },
     });
   });
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const baseUrl = customBaseUrl || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const trackingUrl = `${baseUrl}/track/${rawToken}`;
 
   return {
     rawToken,
     trackingUrl,
     tokenId: trackingRecord.id,
+    expiresAt,
   };
 }
 
 /**
- * Revokes a tracking token
+ * Retrieves the currently active tracking token for a given queue, if one exists and is not expired.
+ */
+export async function getActiveTrackingToken(
+  queueId: string,
+  customBaseUrl?: string
+): Promise<{
+  rawToken: string | null;
+  trackingUrl: string | null;
+  tokenId: string;
+  createdAt: Date;
+  expiresAt: Date | null;
+} | null> {
+  const now = new Date();
+  const activeRecord = await prisma.queueTrackingToken.findFirst({
+    where: {
+      queueId,
+      revokedAt: null,
+      OR: [
+        { expiresAt: null },
+        { expiresAt: { gt: now } },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!activeRecord) return null;
+
+  const baseUrl = customBaseUrl || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const trackingUrl = activeRecord.token ? `${baseUrl}/track/${activeRecord.token}` : null;
+
+  return {
+    rawToken: activeRecord.token,
+    trackingUrl,
+    tokenId: activeRecord.id,
+    createdAt: activeRecord.createdAt,
+    expiresAt: activeRecord.expiresAt,
+  };
+}
+
+/**
+ * Revokes all active tracking tokens for a queue.
  */
 export async function revokeTrackingToken(queueId: string): Promise<void> {
   await prisma.queueTrackingToken.updateMany({
@@ -71,10 +131,10 @@ export async function revokeTrackingToken(queueId: string): Promise<void> {
 
 /**
  * Retrieves public queue status info using raw token.
- * Only returns public safe fields, never internal notes or other customer info.
+ * Strictly returns only safe public fields. NEVER includes internalNote, details, creator info, or audit logs.
  */
 export async function getQueueByTrackingToken(rawToken: string) {
-  if (!rawToken || rawToken.trim() === "") return null;
+  if (!rawToken || typeof rawToken !== "string" || rawToken.trim() === "") return null;
 
   const tokenHash = hashTrackingToken(rawToken.trim());
 
@@ -89,12 +149,12 @@ export async function getQueueByTrackingToken(rawToken: string) {
 
   // Check if revoked
   if (tokenRecord.revokedAt) {
-    return { error: "REVOKED" };
+    return { error: "REVOKED" as const };
   }
 
   // Check expiration if set
   if (tokenRecord.expiresAt && tokenRecord.expiresAt < new Date()) {
-    return { error: "EXPIRED" };
+    return { error: "EXPIRED" as const };
   }
 
   const q = tokenRecord.queue;
@@ -113,7 +173,7 @@ export async function getQueueByTrackingToken(rawToken: string) {
   }
 
   return {
-    success: true,
+    success: true as const,
     data: {
       queueNumber: q.queueNumber,
       nickname: q.nickname,

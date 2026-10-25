@@ -3,10 +3,11 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { normalizeQueueOrdersForDate } from "@/lib/reorder";
+import { updateQueueSchema, formatZodError } from "@/lib/validation";
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { user } = await requireAuth("view_queues");
+    const { user } = await requireAuth("view_queues", req);
     const { id } = params;
 
     const queue = await prisma.queue.findUnique({
@@ -29,17 +30,38 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       return NextResponse.json({ error: "ไม่พบคิวที่ต้องการ" }, { status: 404 });
     }
 
-    // Fetch audit history for this specific queue
-    const auditLogs = await prisma.auditLog.findMany({
-      where: {
-        entityType: "queue",
-        entityId: id,
-      },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-    });
+    const canViewAudit = user.role === "owner" || user.permissions.includes("view_audit_logs");
+    let auditLogs: any[] | undefined = undefined;
 
-    return NextResponse.json({ queue, auditLogs });
+    // Requirement: Queue details API must not return auditLogs to users without view_audit_logs
+    if (canViewAudit) {
+      auditLogs = await prisma.auditLog.findMany({
+        where: {
+          entityType: "queue",
+          entityId: id,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      });
+    }
+
+    const now = new Date();
+    const activeToken = queue.tokens.find(
+      (t) => !t.revokedAt && (!t.expiresAt || t.expiresAt > now)
+    );
+    const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
+    const proto = req.headers.get("x-forwarded-proto") || "http";
+    const baseUrl = host ? `${proto}://${host}` : (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000");
+    const activeTrackingUrl = activeToken?.token ? `${baseUrl}/track/${activeToken.token}` : null;
+
+    return NextResponse.json({
+      queue: {
+        ...queue,
+        activeTrackingUrl,
+      },
+      ...(canViewAudit ? { auditLogs } : {}),
+      canViewAuditLogs: canViewAudit,
+    });
   } catch (error: any) {
     if (error.message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "กรุณาเข้าสู่ระบบก่อนทำรายการ" }, { status: 401 });
@@ -54,9 +76,23 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const { user } = await requireAuth("edit_queue");
+    const { user } = await requireAuth("edit_queue", req);
     const { id } = params;
-    const body = await req.json();
+
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "รูปแบบ JSON ไม่ถูกต้อง" }, { status: 400 });
+    }
+
+    const parseResult = updateQueueSchema.safeParse(body);
+    if (!parseResult.success) {
+      return NextResponse.json(
+        { error: formatZodError(parseResult.error) },
+        { status: 400 }
+      );
+    }
 
     const existing = await prisma.queue.findUnique({
       where: { id },
@@ -74,28 +110,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       details,
       internalNote,
       assignedTo,
-    } = body;
+    } = parseResult.data;
 
     const dataToUpdate: any = {};
-    if (nickname !== undefined) dataToUpdate.nickname = String(nickname).trim();
-    if (packageName !== undefined) dataToUpdate.packageName = String(packageName).trim();
-    if (details !== undefined) dataToUpdate.details = details ? String(details).trim() : null;
-    if (internalNote !== undefined) dataToUpdate.internalNote = internalNote ? String(internalNote).trim() : null;
+    if (nickname !== undefined) dataToUpdate.nickname = nickname.trim();
+    if (packageName !== undefined) dataToUpdate.packageName = packageName.trim();
+    if (details !== undefined) dataToUpdate.details = details ? details.trim() : null;
+    if (internalNote !== undefined) dataToUpdate.internalNote = internalNote ? internalNote.trim() : null;
     if (assignedTo !== undefined) dataToUpdate.assignedTo = assignedTo || null;
-
-    if (questionCount !== undefined) {
-      const q = parseInt(String(questionCount), 10);
-      if (isNaN(q) || q < 0) {
-        return NextResponse.json({ error: "จำนวนคำถามต้องเป็นตัวเลข 0 หรือมากกว่า" }, { status: 400 });
-      }
-      dataToUpdate.questionCount = q;
-    }
+    if (questionCount !== undefined) dataToUpdate.questionCount = questionCount;
 
     const dateChanged = queueDate && queueDate !== existing.queueDate;
     if (dateChanged) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(queueDate)) {
-        return NextResponse.json({ error: "รูปแบบวันที่ไม่ถูกต้อง (YYYY-MM-DD)" }, { status: 400 });
-      }
       dataToUpdate.queueDate = queueDate;
 
       // When date changes, compute order on new date
@@ -133,6 +159,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         queueDate: existing.queueDate,
         details: existing.details,
         internalNote: existing.internalNote,
+        assignedTo: existing.assignedTo,
       },
       newValues: {
         nickname: updated.nickname,
@@ -141,6 +168,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         queueDate: updated.queueDate,
         details: updated.details,
         internalNote: updated.internalNote,
+        assignedTo: updated.assignedTo,
       },
       details: `แก้ไขข้อมูลคิว ${updated.queueNumber}`,
     });
@@ -151,7 +179,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       return NextResponse.json({ error: "กรุณาเข้าสู่ระบบก่อนทำรายการ" }, { status: 401 });
     }
     if (error.message === "FORBIDDEN") {
-      return NextResponse.json({ error: "คุณไม่มีสิทธิ์ในการแก้ไขคิว" }, { status: 403 });
+      return NextResponse.json({ error: "คุณไม่มีสิทธิ์ในการแก้ไขข้อมูลคิวนี้" }, { status: 403 });
     }
     console.error("Update queue error:", error);
     return NextResponse.json({ error: "เกิดข้อผิดพลาดในการแก้ไขข้อมูลคิว" }, { status: 500 });
