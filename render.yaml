@@ -14,7 +14,7 @@ services:
       - key: NEXT_PUBLIC_SHOP_NAME
         value: "Magical Pastel Tarot 🔮"
       - key: DATABASE_URL
-        value: "file:./prisma/production.db"
+        sync: false
       - key: TRACKING_TOKEN_TTL_DAYS
         value: "30"
       - key: INITIAL_OWNER_EMAIL

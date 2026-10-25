@@ -1,6 +1,27 @@
 const fs = require('fs');
 const path = require('path');
 
+// 1. Auto-switch Prisma schema provider based on DATABASE_URL
+const schemaPath = path.join(__dirname, '..', 'prisma', 'schema.prisma');
+if (fs.existsSync(schemaPath)) {
+  const dbUrl = (process.env.DATABASE_URL || '').trim();
+  let schema = fs.readFileSync(schemaPath, 'utf8');
+  if (dbUrl.startsWith('postgres://') || dbUrl.startsWith('postgresql://')) {
+    if (schema.includes('provider = "sqlite"')) {
+      console.log('🔄 Detected PostgreSQL in DATABASE_URL. Switching Prisma provider to postgresql...');
+      schema = schema.replace('provider = "sqlite"', 'provider = "postgresql"');
+      fs.writeFileSync(schemaPath, schema, 'utf8');
+    }
+  } else if (dbUrl.startsWith('file:') || !dbUrl) {
+    if (schema.includes('provider = "postgresql"')) {
+      console.log('🔄 Detected SQLite in DATABASE_URL. Switching Prisma provider to sqlite...');
+      schema = schema.replace('provider = "postgresql"', 'provider = "sqlite"');
+      fs.writeFileSync(schemaPath, schema, 'utf8');
+    }
+  }
+}
+
+// 2. Patch EPERM rename race condition in Prisma generator-build
 const targetFiles = [
   path.join(__dirname, '..', 'node_modules', '@prisma', 'client', 'generator-build', 'index.js'),
   path.join(__dirname, '..', 'node_modules', 'prisma', 'prisma-client', 'generator-build', 'index.js')
