@@ -1,0 +1,98 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-thai: 'IBM Plex Sans Thai', sans-serif;
+  --font-magic: 'Cinzel', serif;
+}
+
+body {
+  font-family: var(--font-thai);
+  background-color: #FFFDFC;
+  color: #4A3E56;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background-image: 
+    radial-gradient(circle at 10% 20%, rgba(217, 199, 255, 0.25) 0%, transparent 40%),
+    radial-gradient(circle at 90% 10%, rgba(255, 217, 232, 0.25) 0%, transparent 40%),
+    radial-gradient(circle at 50% 80%, rgba(220, 235, 255, 0.2) 0%, transparent 50%);
+  background-attachment: fixed;
+}
+
+/* Glassmorphism Cards */
+.pastel-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(217, 199, 255, 0.4);
+  box-shadow: 0 10px 30px -10px rgba(185, 160, 245, 0.15);
+  border-radius: 1.25rem;
+}
+
+.pastel-card-subtle {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 217, 232, 0.4);
+  border-radius: 1rem;
+}
+
+/* Magical borders and glowing */
+.magical-glow {
+  box-shadow: 0 0 20px rgba(217, 199, 255, 0.45);
+}
+
+.magical-border {
+  border: 1px solid transparent;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.95)),
+    linear-gradient(135deg, #B9A0F5, #FFD9E8, #DCEBFF);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+}
+
+/* Custom button styles */
+.btn-magical {
+  background: linear-gradient(135deg, #B9A0F5 0%, #D9C7FF 50%, #FFD9E8 100%);
+  color: #432C66;
+  font-weight: 600;
+  border-radius: 0.875rem;
+  box-shadow: 0 4px 15px rgba(185, 160, 245, 0.35);
+  transition: all 0.25s ease;
+}
+
+.btn-magical:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(185, 160, 245, 0.45);
+  filter: brightness(1.03);
+}
+
+.btn-magical:active {
+  transform: translateY(0);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255, 240, 246, 0.5);
+}
+::-webkit-scrollbar-thumb {
+  background: #D9C7FF;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #B9A0F5;
+}
+
+/* Reduce motion accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

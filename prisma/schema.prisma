@@ -1,0 +1,111 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Profile {
+  id           String            @id @default(uuid())
+  email        String            @unique
+  displayName  String
+  passwordHash String
+  role         String            @default("admin") // "owner" | "admin"
+  isActive     Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  permissions  AdminPermission[]
+  createdQueues Queue[]          @relation("QueueCreator")
+  assignedQueues Queue[]         @relation("QueueAssignee")
+  auditLogs    AuditLog[]
+
+  @@map("profiles")
+}
+
+model AdminPermission {
+  id            String   @id @default(uuid())
+  userId        String
+  permissionKey String
+  grantedBy     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          Profile  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionKey])
+  @@index([userId])
+  @@map("admin_permissions")
+}
+
+model Queue {
+  id            String               @id @default(uuid())
+  queueNumber   String               @unique
+  queueDate     String               // Format: YYYY-MM-DD
+  queueOrder    Int                  // Order index within the date
+  nickname      String
+  packageName   String
+  questionCount Int                  @default(1)
+  details       String?
+  internalNote  String?
+  status        String               @default("waiting") // "waiting" | "in_progress" | "completed" | "cancelled"
+  createdBy     String
+  assignedTo    String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  completedAt   DateTime?
+  cancelledAt   DateTime?
+  archivedAt    DateTime?
+
+  creator       Profile              @relation("QueueCreator", fields: [createdBy], references: [id])
+  assignee      Profile?             @relation("QueueAssignee", fields: [assignedTo], references: [id])
+  tokens        QueueTrackingToken[]
+
+  @@index([queueDate, status])
+  @@index([queueOrder])
+  @@index([nickname])
+  @@index([queueNumber])
+  @@map("queues")
+}
+
+model QueueTrackingToken {
+  id         String    @id @default(uuid())
+  queueId    String
+  tokenHash  String    @unique
+  createdBy  String
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  queue      Queue     @relation(fields: [queueId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+  @@index([queueId])
+  @@map("queue_tracking_tokens")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actorName  String?
+  action     String
+  entityType String
+  entityId   String
+  oldValues  String?  // JSON string
+  newValues  String?  // JSON string
+  details    String?
+  createdAt  DateTime @default(now())
+
+  actor      Profile? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model QueueSequence {
+  sequenceDate String @id // Format: YYYYMMDD
+  lastNumber   Int    @default(0)
+
+  @@map("queue_sequences")
+}
